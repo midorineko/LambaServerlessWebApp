@@ -17,16 +17,6 @@ exports.handler = (event, context, callback) => {
 
   // We'll use the same response we used in our Webtask
   const RESPONSE = {
-    thingSuccess : {
-      statusCode : 200,
-      message: "Heres your thing",
-      thing_string: thing_string,
-      email: email,
-        headers: {
-         "Access-Control-Allow-Origin" : "*", // Required for CORS support to work
-         "Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS 
-        }
-    },
     OK : {
       statusCode : 200,
       message: "You have successfully subscribed to the newsletter!",
@@ -61,22 +51,15 @@ exports.handler = (event, context, callback) => {
   console.log("Thing: ", thing);
   console.log("Method: ", method);
 
-
-  if(!email){
-    // If we don't get an email, we'll end our execution and send an error
-    return callback(null, RESPONSE.ERROR);
-  }else{
-    model.email.S = email;
-    callback(null, RESPONSE.OK);
-  }
   
   if(method == "getThing"){
-	  var split_email = email.split(".")[0];
-	  var thing_file_name = split_email+'_den.txt';
+	  var split_email = email.replace(/\./g,'');
+	  console.log("split emaiml: ", split_email);
+	  var thing_file_name = split_email+'_home.txt';
 	  var at_split = split_email.split('@');
 	  var upcase_email = at_split[0]+at_split[1].toUpperCase();
 	  var file_in_s3 = thing_file_name;
-	  aws.config.update({region: 'us-east-1', accessKeyId: 'AWS ACCESS',secretAccessKey: 'AWS SECRET'});
+	  aws.config.update({region: 'us-east-1', accessKeyId: 'AWS Access',secretAccessKey: 'AWS Secret'});
 	  var s3 = new aws.S3();
 	  var getParams = {
 	    Bucket: 'mrcatnapsthings', // your bucket name,
@@ -99,11 +82,11 @@ exports.handler = (event, context, callback) => {
 	  	  if (err) console.log(err, err.stack); // an error occurred
 	  	  else     console.log(data);           // successful response
 	  	});
-	  	var iot_endpoint = 'API ENDPOINT';
+	  	var iot_endpoint = 'IOT ENDPOINT';
 	  	var region = 'us-east-1';
 	  	var thing_name = upcase_email;
 	  	var file_save = iot_endpoint + ',' + region + ',' + thing_name;
-	  	fs.writeFile("thing.txt", file_save, function(err) {
+	  	fs.writeFile("/tmp/thing.txt", file_save, function(err) {
 	  	    if(err) {
 	  	        return console.log(err);
 	  	    }
@@ -113,6 +96,22 @@ exports.handler = (event, context, callback) => {
 	  	      else {
 	  	      	console.log([thing_name, iot_endpoint, region]);
 	  	      	thing_string = thing_name;
+	  	    	var things = {};
+	  	    	things[2]=thing_string;
+	  	    	
+	  	      	console.log("thing stuff from creation: ", thing_string);
+				 const RESPONSE = {
+				    thingSuccess : {
+				      statusCode : 200,
+				      message: "Heres your thing",
+				      thing_string: things,
+				      email: email,
+				        headers: {
+				         "Access-Control-Allow-Origin" : "*", // Required for CORS support to work
+				         "Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS 
+				        }
+				    }
+				  };
 	  	      	callback(null, RESPONSE.thingSuccess);
 	  	      }           // successful response
 	  	    });
@@ -129,15 +128,84 @@ exports.handler = (event, context, callback) => {
 	  	  var key_vals = thingKey.split(",");
 	  	  var iot_endpoint = key_vals[0];
 	  	  var region = key_vals[1];
-	  	  var thing_name = key_vals[2];
+	  	  var key_length = key_vals.length;
+	  	  var things = {};
+	  	  for(var i = 2; i < key_length; i++){
+	  	  	things[i] = key_vals[i];
+	  	  }
   	      	console.log([thing_name, iot_endpoint, region]);
   	      	thing_string = thing_name;
-	  	    	callback(null, RESPONSE.thingSuccess);
+    		const RESPONSE = {
+		    thingSuccess : {
+		      statusCode : 200,
+		      message: "Heres your thing",
+		      thing_string: things,
+		      email: email,
+		        headers: {
+		         "Access-Control-Allow-Origin" : "*", // Required for CORS support to work
+		         "Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS 
+		        }
+		    }
+		  };
+  	    	callback(null, RESPONSE.thingSuccess);
 	  	});
 	  }
 	});
   }
   
+  
+if(method == "solidColor"){
+	var color = event.body.color;
+	var send_text = "solid="+color;
+	send_to_lights(thing, send_text, callback);
+}
 
+if(method == "setSliderValues"){
+	var sendValueString = event.body.sendValueString;
+	send_to_lights(thing, sendValueString, callback);
+}
+
+if(method == "sceneSelect"){
+	var scene = event.body.scene;
+	send_to_lights(thing, scene, callback);
+}
+  
   // Insert the email into the database, but only if the email does not already exist.
+};
+
+var send_to_lights = function(thing_entry, send_text, callback){
+	var config = {};
+	config.IOT_BROKER_ENDPOINT      = "a2pvzpq52fxqx8.iot.us-east-1.amazonaws.com";
+	config.IOT_BROKER_REGION        = 'us-east-1';
+	config.IOT_THING_NAME           = thing_entry;
+	aws.config.region = config.IOT_BROKER_REGION;
+	var iotData = new aws.IotData({endpoint: config.IOT_BROKER_ENDPOINT});
+    var payloadObj={ "state":
+                          { "desired":
+                                   {"scene":send_text}
+                          }
+                 };
+    var paramsUpdate = {
+        "thingName" : config.IOT_THING_NAME,
+        "payload" : JSON.stringify(payloadObj)
+    };
+    iotData.updateThingShadow(paramsUpdate, function(err, data) {
+      if (err){
+      	console.log(err);
+      }
+      else {
+		const RESPONSE = {
+		  sceneSuccess : {
+			statusCode : 200,
+			message: "Change Successful",
+			sent_text: send_text,
+			headers: {
+				"Access-Control-Allow-Origin" : "*", // Required for CORS support to work
+				 "Access-Control-Allow-Credentials" : true // Required for cookies, authorization headers with HTTPS 
+			}
+		  }
+	    };
+	  	callback(null, RESPONSE.sceneSuccess);
+      }    
+    });
 };
